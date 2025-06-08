@@ -96,6 +96,9 @@ func main() {
 	protected := apiGroup.Group("")
 	protected.Use(authMiddleware.Authenticate)
 
+	// User routes
+	protected.GET("/users/me", authHandler.GetCurrentUser)
+
 	// Profile routes
 	protected.GET("/profile", profileHandler.GetProfile)
 	protected.POST("/profile", profileHandler.CreateProfile)

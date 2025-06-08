@@ -42,13 +42,13 @@ func (s *PasswordService) ValidatePasswordStrength(password string) error {
 	if len(password) < 8 {
 		return fmt.Errorf("password must be at least 8 characters long")
 	}
-	
+
 	var (
 		hasUpper  bool
 		hasLower  bool
 		hasNumber bool
 	)
-	
+
 	for _, char := range password {
 		switch {
 		case 'A' <= char && char <= 'Z':
@@ -59,10 +59,10 @@ func (s *PasswordService) ValidatePasswordStrength(password string) error {
 			hasNumber = true
 		}
 	}
-	
+
 	if !hasUpper || !hasLower || !hasNumber {
 		return fmt.Errorf("password must contain at least one uppercase letter, one lowercase letter, and one number")
 	}
-	
+
 	return nil
 }

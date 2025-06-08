@@ -61,7 +61,9 @@ func (h *AuthHandler) Register(c echo.Context) error {
 	// Create user
 	user, err := h.userRepo.Create(req.UserID, passwordHash, req.DisplayName)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create user"})
+		// Log the actual error for debugging
+		c.Logger().Errorf("Failed to create user: %v", err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create user", "details": err.Error()})
 	}
 
 	// Generate JWT token
@@ -238,4 +240,24 @@ func (h *AuthHandler) ChangePassword(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "Password changed successfully"})
+}
+
+// GetCurrentUser returns the current authenticated user's information
+func (h *AuthHandler) GetCurrentUser(c echo.Context) error {
+	userID := c.Get("user_id").(string)
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid user ID"})
+	}
+
+	// Get user
+	user, err := h.userRepo.GetByID(userUUID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "User not found"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to retrieve user"})
+	}
+
+	return c.JSON(http.StatusOK, user)
 }

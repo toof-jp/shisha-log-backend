@@ -9,15 +9,15 @@ import (
 )
 
 type Config struct {
-	Port                 string
-	Environment          string
-	SupabaseURL          string
-	SupabaseAnonKey      string
-	SupabaseServiceRole  string
-	JWTSecret            string
-	AllowedOrigins       []string
-	DatabaseURL          string
-	TokenDuration        string
+	Port                string
+	Environment         string
+	SupabaseURL         string
+	SupabaseAnonKey     string
+	SupabaseServiceRole string
+	JWTSecret           string
+	AllowedOrigins      []string
+	DatabaseURL         string
+	TokenDuration       string
 }
 
 func LoadConfig() (*Config, error) {
@@ -26,14 +26,14 @@ func LoadConfig() (*Config, error) {
 	}
 
 	config := &Config{
-		Port:                 getEnv("PORT", "8080"),
-		Environment:          getEnv("ENVIRONMENT", "development"),
-		SupabaseURL:          getEnv("SUPABASE_URL", ""),
-		SupabaseAnonKey:      getEnv("SUPABASE_ANON_KEY", ""),
-		SupabaseServiceRole:  getEnv("SUPABASE_SERVICE_ROLE_KEY", ""),
-		JWTSecret:            getEnv("JWT_SECRET", ""),
-		DatabaseURL:          getEnv("DATABASE_URL", ""),
-		TokenDuration:        getEnv("TOKEN_DURATION", "24h"),
+		Port:                getEnv("PORT", "8080"),
+		Environment:         getEnv("ENVIRONMENT", "development"),
+		SupabaseURL:         getEnv("SUPABASE_URL", ""),
+		SupabaseAnonKey:     getEnv("SUPABASE_ANON_KEY", ""),
+		SupabaseServiceRole: getEnv("SUPABASE_SERVICE_ROLE_KEY", ""),
+		JWTSecret:           getEnv("JWT_SECRET", ""),
+		DatabaseURL:         getEnv("DATABASE_URL", ""),
+		TokenDuration:       getEnv("TOKEN_DURATION", "24h"),
 	}
 
 	allowedOrigins := getEnv("ALLOWED_ORIGINS", "http://localhost:3000")

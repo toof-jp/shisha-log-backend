@@ -19,25 +19,25 @@ func NewProfileRepository(client *supabase.Client) *ProfileRepository {
 
 func (r *ProfileRepository) GetByID(ctx context.Context, id string) (*models.Profile, error) {
 	var profiles []models.Profile
-	
+
 	data, _, err := r.client.From("profiles").
 		Select("*", "exact", false).
 		Eq("id", id).
 		Execute()
-	
+
 	if err != nil {
 		return nil, err
 	}
-	
+
 	err = json.Unmarshal(data, &profiles)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	if len(profiles) == 0 {
 		return nil, errors.New("profile not found")
 	}
-	
+
 	return &profiles[0], nil
 }
 
@@ -45,7 +45,7 @@ func (r *ProfileRepository) Create(ctx context.Context, profile *models.Profile)
 	_, _, err := r.client.From("profiles").
 		Insert(profile, false, "", "", "").
 		Execute()
-	
+
 	return err
 }
 
@@ -53,11 +53,11 @@ func (r *ProfileRepository) Update(ctx context.Context, id string, displayName s
 	update := map[string]interface{}{
 		"display_name": displayName,
 	}
-	
+
 	_, _, err := r.client.From("profiles").
 		Update(update, "", "").
 		Eq("id", id).
 		Execute()
-	
+
 	return err
 }
