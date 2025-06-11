@@ -1,13 +1,6 @@
-variable "aws_region" {
-  description = "AWS region"
-  type        = string
-  default     = "ap-northeast-1"
-}
-
 variable "project_name" {
   description = "Name of the project"
   type        = string
-  default     = "shisha-log"
 }
 
 variable "environment" {
@@ -28,30 +21,8 @@ variable "bundle_id" {
 }
 
 variable "domain_name" {
-  description = "Domain name for SSL certificate (e.g., api.example.com)"
+  description = "Domain name for the application"
   type        = string
-}
-
-variable "container_registry" {
-  description = "External container registry URL (e.g., registry.hub.docker.com, ghcr.io)"
-  type        = string
-}
-
-variable "container_image" {
-  description = "Container image name and tag (e.g., username/shisha-log:latest)"
-  type        = string
-}
-
-variable "registry_username" {
-  description = "Container registry username"
-  type        = string
-  sensitive   = true
-}
-
-variable "registry_password" {
-  description = "Container registry password or token"
-  type        = string
-  sensitive   = true
 }
 
 variable "supabase_url" {
@@ -78,16 +49,16 @@ variable "jwt_secret" {
   sensitive   = true
 }
 
-variable "allowed_origins" {
-  description = "Comma-separated list of allowed CORS origins"
-  type        = string
-  default     = "*"
-}
-
 variable "database_url" {
   description = "Direct database connection URL"
   type        = string
   sensitive   = true
+}
+
+variable "allowed_origins" {
+  description = "Comma-separated list of allowed CORS origins"
+  type        = string
+  default     = "*"
 }
 
 variable "token_duration" {
@@ -96,3 +67,24 @@ variable "token_duration" {
   default     = "24h"
 }
 
+variable "container_registry" {
+  description = "External container registry URL"
+  type        = string
+}
+
+variable "container_image" {
+  description = "Container image name and tag"
+  type        = string
+}
+
+variable "registry_username" {
+  description = "Container registry username"
+  type        = string
+  sensitive   = true
+}
+
+variable "registry_password" {
+  description = "Container registry password"
+  type        = string
+  sensitive   = true
+}

@@ -1,22 +1,25 @@
-# Shisha Log Backend Infrastructure
+# Shisha Log Backend Infrastructure - AWS Lightsail
 
-This directory contains Terraform configurations to deploy the Shisha Log backend on AWS using ECS Fargate in a simplified, cost-effective architecture.
+This directory contains Terraform configurations to deploy the Shisha Log backend on AWS Lightsail with static IP and custom domain support.
 
 ## Architecture Overview
 
-- **VPC**: Custom VPC with single public subnet
-- **ECS Fargate**: Single containerized backend instance with direct internet access
-- **CloudWatch**: Logs and monitoring with Container Insights
+- **AWS Lightsail**: Single VPS instance with Docker
+- **Static IP**: Fixed IP address for domain configuration
+- **Nginx**: Reverse proxy with SSL termination
+- **Let's Encrypt**: Automated SSL certificate management
+- **External Registry**: Docker Hub, GitHub Container Registry, etc.
 - **Supabase**: External database (not managed by this Terraform)
 
-This simplified architecture balances cost efficiency with observability, suitable for small applications with low traffic requirements.
+This cost-effective architecture provides SSL, custom domain support, and easy deployment for small to medium applications.
 
 ## Prerequisites
 
 1. AWS CLI configured with appropriate credentials
 2. Terraform installed (>= 1.0)
-3. Docker image pushed to ECR
-4. Supabase project set up
+3. External container registry account (Docker Hub, GHCR, etc.)
+4. Domain name with DNS management access
+5. Supabase project set up
 
 ## Directory Structure
 
@@ -26,8 +29,7 @@ infra/
 ├── variables.tf               # Variable definitions
 ├── outputs.tf                 # Output values
 ├── modules/
-│   ├── networking/           # VPC, single public subnet
-│   └── ecs/                  # ECS cluster, service, task definition
+│   └── lightsail/            # Lightsail instance, static IP, ports
 └── environments/
     ├── dev/                  # Development environment config
     └── prod/                 # Production environment config
@@ -35,110 +37,223 @@ infra/
 
 ## Setup Instructions
 
-### 1. Build and Push Docker Image to ECR
+### 1. Container Registry Setup
 
+#### Docker Hub (Recommended for simplicity)
 ```bash
-# Create ECR repository
-aws ecr create-repository --repository-name shisha-log --region ap-northeast-1
+# Create Docker Hub account and repository
+# Repository: username/shisha-log
+# Get access token from Docker Hub settings
+```
 
-# Get login token
-aws ecr get-login-password --region ap-northeast-1 | docker login --username AWS --password-stdin YOUR_ACCOUNT_ID.dkr.ecr.ap-northeast-1.amazonaws.com
-
-# Build and tag image
-docker build -t shisha-log .
-docker tag shisha-log:latest YOUR_ACCOUNT_ID.dkr.ecr.ap-northeast-1.amazonaws.com/shisha-log:latest
-
-# Push image
-docker push YOUR_ACCOUNT_ID.dkr.ecr.ap-northeast-1.amazonaws.com/shisha-log:latest
+#### GitHub Container Registry
+```bash
+# Create personal access token with packages:write permission
+export DOCKER_USERNAME=your-github-username
+export DOCKER_PASSWORD=your-github-token
 ```
 
 ### 2. Set Environment Variables
 
-Export sensitive variables:
-
 ```bash
+# Container registry credentials
+export TF_VAR_registry_username="your-registry-username"
+export TF_VAR_registry_password="your-registry-password"
+
+# Supabase configuration
 export TF_VAR_supabase_url="https://your-project.supabase.co"
 export TF_VAR_supabase_anon_key="your-anon-key"
 export TF_VAR_supabase_service_role_key="your-service-role-key"
-export TF_VAR_jwt_secret="your-jwt-secret"
-export TF_VAR_database_url="postgresql://user:password@host:5432/database"
+
+# Application configuration
+export TF_VAR_jwt_secret="your-very-secure-jwt-secret"
+export TF_VAR_database_url="postgresql://postgres:password@db.your-project.supabase.co:5432/postgres"
 ```
 
-### 3. Update terraform.tfvars
+### 3. Update Terraform Variables
 
-Update the `container_image` variable in the environment-specific `terraform.tfvars` file with your ECR repository URL.
+Edit the environment-specific `terraform.tfvars` files:
+- Update `domain_name` with your actual domain
+- Update `container_registry` and `container_image` with your registry details
+- Adjust `bundle_id` for desired instance size
 
 ### 4. Deploy Infrastructure
 
-For development:
 ```bash
 cd infra
+
+# Initialize Terraform
 terraform init
+
+# Deploy development environment
 terraform workspace new dev
 terraform plan -var-file=environments/dev/terraform.tfvars
 terraform apply -var-file=environments/dev/terraform.tfvars
+
+# Get the static IP address
+terraform output static_ip_address
 ```
 
-For production:
+### 5. Configure DNS
+
+Configure your domain's DNS settings:
+```
+A Record: api-dev.shisha.toof.jp -> [STATIC_IP_ADDRESS]
+```
+
+### 6. Setup SSL Certificate
+
+After DNS propagation (usually 5-15 minutes), SSH to the instance and run:
+
 ```bash
-cd infra
-terraform workspace new prod
-terraform plan -var-file=environments/prod/terraform.tfvars
-terraform apply -var-file=environments/prod/terraform.tfvars
+# SSH to the instance
+ssh ubuntu@[STATIC_IP_ADDRESS]
+
+# Setup SSL certificate
+sudo certbot --nginx -d api-dev.shisha.toof.jp --non-interactive --agree-tos --email admin@shisha.toof.jp
 ```
 
-## Accessing the Application
+## Lightsail Bundle Options
 
-Your application will be accessible directly through the ECS task's public IP address on port 8080. To find the IP address:
+| Bundle ID | vCPUs | RAM | SSD | Transfer | Price/Month |
+|-----------|-------|-----|-----|----------|-------------|
+| nano_2_0  | 1     | 0.5GB | 20GB | 1TB    | $3.50      |
+| micro_2_0 | 1     | 1GB   | 40GB | 2TB    | $5.00      |
+| small_2_0 | 1     | 2GB   | 60GB | 3TB    | $10.00     |
+| medium_2_0| 2     | 4GB   | 80GB | 4TB    | $20.00     |
+
+## Cost Breakdown
+
+**Development Environment (nano_2_0):**
+- Lightsail Instance: $3.50/month
+- Static IP: Free (included)
+- SSL Certificate: Free (Let's Encrypt)
+- **Total: $3.50/month**
+
+**Production Environment (small_2_0):**
+- Lightsail Instance: $10/month
+- Static IP: Free (included)
+- SSL Certificate: Free (Let's Encrypt)
+- **Total: $10/month**
+
+## Deployment Process
+
+### Automatic Deployment (GitHub Actions)
+
+1. **Infrastructure**: Manual trigger via `workflow_dispatch`
+2. **Application**: Automatic on push to main/develop branches
+
+### Manual Deployment
 
 ```bash
-# Get task ARN
-aws ecs list-tasks --cluster shisha-log-dev-cluster --service-name shisha-log-dev-service
+# SSH to instance
+ssh ubuntu@[STATIC_IP_ADDRESS]
 
-# Get task details including public IP
-aws ecs describe-tasks --cluster shisha-log-dev-cluster --tasks [TASK_ARN]
+# Navigate to application directory
+cd /opt/shisha-log
+
+# Update application
+./deploy.sh
 ```
 
-For production use, consider:
-1. Setting up a domain name with Route53
-2. Using CloudFront for CDN and SSL termination
-3. Implementing proper health checks
+## Monitoring and Logs
 
-## Outputs
-
-After deployment, Terraform will output:
-- `ecs_cluster_id`: ECS cluster identifier
-- `ecs_service_name`: ECS service name
-- `vpc_id`: VPC identifier
-- `public_subnet_id`: Public subnet identifier
-
-## Cost Optimization
-
-This simplified architecture provides excellent cost efficiency:
-- **No ALB**: Saves ~$22/month
-- **No NAT Gateways**: Saves ~$90/month
-- **Single AZ**: No cross-AZ data transfer costs
-- **Single Task**: Minimal compute resources
-- **ECS Fargate**: ~$15/month (256CPU, 512MB for dev)
-- **CloudWatch**: ~$5/month (logs and metrics)
-
-**Total monthly cost**: ~$20/month (vs ~$112/month with full HA setup)
-
-Additional cost-saving tips:
-- Use Fargate Spot for non-critical workloads (up to 70% savings)
-- Use smaller instance sizes for development
-
-## Monitoring
-
-- **CloudWatch Logs**: `/ecs/shisha-log-{environment}` (30 days retention)
-- **Container Insights**: ECS cluster and service metrics
-- **ECS Service health checks**: Container restart on failure
-- **Application logs**: Available in CloudWatch for debugging and monitoring
-
-You can view logs using:
+### Application Logs
 ```bash
-aws logs tail /ecs/shisha-log-dev --follow
+# SSH to instance
+ssh ubuntu@[STATIC_IP_ADDRESS]
+
+# View application logs
+cd /opt/shisha-log
+docker-compose logs -f app
 ```
+
+### Nginx Logs
+```bash
+# Access logs
+sudo tail -f /var/log/nginx/access.log
+
+# Error logs
+sudo tail -f /var/log/nginx/error.log
+```
+
+### System Monitoring
+```bash
+# System resources
+htop
+
+# Disk usage
+df -h
+
+# Docker status
+docker ps
+docker stats
+```
+
+## Security Features
+
+- **Firewall**: Only ports 22 (SSH), 80 (HTTP), 443 (HTTPS) are open
+- **SSL/TLS**: Automatic HTTPS redirect with Let's Encrypt certificates
+- **Auto-renewal**: SSL certificates renew automatically via cron
+- **Docker isolation**: Application runs in isolated containers
+- **Nginx proxy**: Hides direct application access
+
+## Backup and Recovery
+
+### Database Backup
+```bash
+# Supabase provides automated backups
+# Manual backup via Supabase dashboard or CLI
+```
+
+### Instance Snapshot
+```bash
+# Create snapshot via AWS CLI
+aws lightsail create-instance-snapshot \
+  --instance-name shisha-log-prod \
+  --instance-snapshot-name shisha-log-backup-$(date +%Y%m%d)
+```
+
+## Troubleshooting
+
+### SSL Certificate Issues
+```bash
+# Check certificate status
+sudo certbot certificates
+
+# Manual renewal
+sudo certbot renew --nginx
+
+# Check Nginx configuration
+sudo nginx -t
+```
+
+### Application Issues
+```bash
+# Check container status
+docker ps
+
+# Restart application
+cd /opt/shisha-log
+docker-compose restart
+
+# Check health endpoint
+curl http://localhost:8080/health
+```
+
+### DNS Issues
+```bash
+# Check DNS propagation
+nslookup api-dev.shisha.toof.jp
+dig api-dev.shisha.toof.jp
+```
+
+## Scaling Considerations
+
+- **Vertical Scaling**: Upgrade to larger Lightsail bundle
+- **Horizontal Scaling**: Add Application Load Balancer + multiple instances
+- **Database Scaling**: Supabase handles database scaling automatically
+- **CDN**: Add CloudFront for global content delivery
 
 ## Cleanup
 
@@ -147,3 +262,5 @@ To destroy the infrastructure:
 ```bash
 terraform destroy -var-file=environments/{environment}/terraform.tfvars
 ```
+
+**Note**: This will permanently delete the instance and all data. Ensure backups are taken before destroying.
