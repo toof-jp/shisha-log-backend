@@ -6,6 +6,7 @@ output "instance_name" {
 output "static_ip_address" {
   description = "Static IP address assigned to the instance"
   value       = aws_lightsail_static_ip.main.ip_address
+  depends_on  = [aws_lightsail_static_ip_attachment.main]
 }
 
 output "instance_id" {

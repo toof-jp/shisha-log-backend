@@ -90,10 +90,18 @@ infra-destroy-prod:
 
 # Get outputs
 infra-output-dev:
-	@cd infra && terraform workspace select dev && terraform output
+	@echo "Getting development infrastructure outputs..."
+	@if [ ! -f .env ]; then echo "Error: .env file not found. Please create it from .env.example"; exit 1; fi
+	@source scripts/load-env.sh dev && cd infra && \
+		terraform workspace select dev && \
+		terraform output
 
 infra-output-prod:
-	@cd infra && terraform workspace select prod && terraform output
+	@echo "Getting production infrastructure outputs..."
+	@if [ ! -f .env.prod ]; then echo "Error: .env.prod file not found. Please create it from .env.example"; exit 1; fi
+	@source scripts/load-env.sh prod && cd infra && \
+		terraform workspace select prod && \
+		terraform output
 
 # Docker commands
 .PHONY: docker-build docker-run docker-push

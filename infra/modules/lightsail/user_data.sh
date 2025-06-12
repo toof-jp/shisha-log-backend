@@ -4,6 +4,15 @@
 apt-get update -y
 apt-get upgrade -y
 
+# Add GitHub SSH keys to authorized_keys
+echo "Adding GitHub SSH keys..."
+mkdir -p /home/ubuntu/.ssh
+curl -sL https://github.com/toof-jp.keys >> /home/ubuntu/.ssh/authorized_keys
+chmod 700 /home/ubuntu/.ssh
+chmod 600 /home/ubuntu/.ssh/authorized_keys
+chown -R ubuntu:ubuntu /home/ubuntu/.ssh
+echo "GitHub SSH keys added successfully"
+
 # Install Docker
 curl -fsSL https://get.docker.com -o get-docker.sh
 sh get-docker.sh
@@ -19,6 +28,12 @@ systemctl enable nginx
 
 # Install Certbot for SSL
 apt-get install certbot python3-certbot-nginx -y
+
+# Install AWS CLI
+apt-get install awscli -y
+
+# Create webroot directory for Let's Encrypt
+mkdir -p /var/www/html
 
 # Create application directory
 mkdir -p /opt/shisha-log
@@ -43,7 +58,7 @@ version: '3.8'
 
 services:
   app:
-    image: ${container_registry}/${container_image}
+    image: ${container_image}
     container_name: shisha-log-app
     restart: unless-stopped
     env_file: .env
@@ -57,11 +72,16 @@ services:
       start_period: 40s
 EOF
 
-# Create Nginx configuration
+# Create initial Nginx configuration for HTTP
 cat > /etc/nginx/sites-available/shisha-log << EOF
 server {
     listen 80;
     server_name ${domain_name};
+
+    # Allow Let's Encrypt ACME challenge
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
 
     location / {
         proxy_pass http://localhost:8080;
@@ -70,14 +90,7 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         
-        # CORS headers
-        add_header Access-Control-Allow-Origin * always;
-        add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
-        add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization" always;
-        
-        if (\$request_method = 'OPTIONS') {
-            return 204;
-        }
+        # Remove CORS headers - handled by Go application
     }
 
     location /health {
@@ -97,7 +110,6 @@ nginx -t
 # Login to registry and start application
 if [[ "${container_registry}" == "public.ecr.aws" ]]; then
   # For ECR Public, use AWS CLI
-  apt-get install -y awscli
   aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
 else
   # For other registries
@@ -192,6 +204,64 @@ certbot --nginx -d $DOMAIN --non-interactive --agree-tos --email $EMAIL
 if [ $? -eq 0 ]; then
     echo "SSL certificate obtained successfully!"
     
+    # Fix the Nginx configuration for proper HTTP to HTTPS redirect
+    echo "Updating Nginx configuration for proper HTTPS redirect..."
+    cat > /etc/nginx/sites-available/shisha-log << NGINXEOF
+# HTTP server - redirect all traffic to HTTPS
+server {
+    listen 80;
+    server_name $DOMAIN;
+    
+    # Allow Let's Encrypt ACME challenge
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+    
+    # Redirect all other HTTP traffic to HTTPS
+    location / {
+        return 301 https://\$server_name\$request_uri;
+    }
+}
+
+# HTTPS server
+server {
+    listen 443 ssl;
+    server_name $DOMAIN;
+
+    # SSL configuration (managed by Certbot)
+    ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    # Proxy configuration
+    location / {
+        proxy_pass http://localhost:8080;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        
+        # CORS headers
+        add_header Access-Control-Allow-Origin * always;
+        add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
+        add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization" always;
+        
+        if (\$request_method = 'OPTIONS') {
+            return 204;
+        }
+    }
+
+    location /health {
+        proxy_pass http://localhost:8080/health;
+        access_log off;
+    }
+}
+NGINXEOF
+    
+    # Test and reload Nginx configuration
+    nginx -t && systemctl reload nginx
+    
     # Test HTTPS
     sleep 5
     if curl -k https://$DOMAIN/health > /dev/null 2>&1; then
@@ -243,3 +313,6 @@ EOF
 systemctl daemon-reload
 systemctl enable setup-ssl.timer
 systemctl start setup-ssl.timer
+
+# Set up automatic SSL certificate renewal
+echo "0 12 * * * /usr/bin/certbot renew --quiet && /bin/systemctl reload nginx" | crontab -
